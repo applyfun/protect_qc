@@ -1,4 +1,4 @@
-## Quality control and imputation pipelin for PROTECT genetic data
+## Quality control and imputation pipeline for PROTECT genetic data
 
 Includes
 
