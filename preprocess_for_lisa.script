@@ -1,28 +1,54 @@
-# Unpack, explore and preprocess PROTECT study files
-# 15/08/19
-# R.Arathimos
+### Unpack, explore and preprocess PROTECT study files
+### 15/08/19
+### R.Arathimos
 
-#unzip protect data from 7zip format and decrypt from gpg encryption
 cd ~/brc_scratch/output/protect_qc
 
+printf "data_root=~/brc_scratch/data/protect_qc
+output_root=~/brc_scratch/output/protect_qc" > Config.conf 
+
+source Config.conf 
+
+
+
+
+
+
+
+#####################
+##### 1 UNZIP #######
+#####################
+
+#unzip protect data from 7zip format and decrypt from gpg encryption
+cd $output_root
+
 #may need to extract manually on PC using 7zip if command fails
-~/brc_scratch/software/p7zip_16.02/bin/7za x -so -pCL_PROTECT010819 ~/brc_scratch/data/protect_qc/PROTECT_PLINK_NOQC.7z > PROTECT_PLINK_NOQC
+~/brc_scratch/software/p7zip_16.02/bin/7za x -so -pCL_PROTECT010819 $data_root/PROTECT_PLINK_NOQC.7z > PROTECT_PLINK_NOQC
 
-gpg --output ~/brc_scratch/output/protect_qc/UK_ByronCreese.tar.gz --decrypt ~/brc_scratch/data/protect_qc/UK_ByronCreese.tar.gz.gpg
+gpg --output ~/brc_scratch/output/protect_qc/UK_ByronCreese.tar.gz --decrypt $data_root/UK_ByronCreese.tar.gz.gpg
 
-gpg --output ~/brc_scratch/output/protect_qc/UK_protect_2nd.tar.gz --decrypt ~/brc_scratch/data/protect_qc/UK_protect_2nd.tar.gz.gpg
+gpg --output ~/brc_scratch/output/protect_qc/UK_protect_2nd.tar.gz --decrypt $data_root/UK_protect_2nd.tar.gz.gpg
 
-gpg --output ~/brc_scratch/output/protect_qc/UK_protect_3RD.tar.gz --decrypt ~/brc_scratch/data/protect_qc/UK_protect_3rd.tar.gz.gpg
+gpg --output ~/brc_scratch/output/protect_qc/UK_protect_3RD.tar.gz --decrypt $data_root/UK_protect_3rd.tar.gz.gpg
 
-tar -xvf ~/brc_scratch/output/protect_qc/UK_protect_2nd.tar.gz
+tar -xvf $output_root/UK_protect_2nd.tar.gz
 
-tar -xvf ~/brc_scratch/output/protect_qc/UK_protect_3RD.tar.gz
+tar -xvf $output_root/UK_protect_3RD.tar.gz
 
-tar -xvf ~/brc_scratch/output/protect_qc/UK_ByronCreese.tar.gz
+tar -xvf $output_root/UK_ByronCreese.tar.gz
 
-#explore files
 
-cd ~/brc_scratch/data/protect/
+
+
+
+
+
+
+########################
+##### 2 EXPLORE ########
+########################
+
+cd $output_root
 
 #################
 ##### DCGN ######
@@ -58,14 +84,23 @@ wc -l  UK_Protect.bim
 #### odinn ####
 ###############
 
-head ~/brc_scratch/output/protect_qc/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.fam
-wc -l ~/brc_scratch/output/protect_qc/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.fam
+head $output_root/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.fam
+wc -l $output_root/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.fam
 #4228 individuals - with TEC ids
-wc -l ~/brc_scratch/output/protect_qc/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.bim
+wc -l $output_root/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.bim
 #693143 variants
 
 
-############################################################################
+
+
+
+
+
+
+
+#######################
+##### 3 PROCESS #######
+#######################
 
 head UK_ByronCreese_PN_alias.ioe24.hh
 
@@ -74,13 +109,13 @@ head UK_ByronCreese_PN_alias.ioe24.hh
 awk '{print $2}' UK_Protect.fam
 
 #check for TEC id matches between the two files that contain TEC ids
-awk -F'|' 'NR==FNR{c[$2]++;next};c[$2] > 0' ~/brc_scratch/data/protect/UK_Protect.fam ~/brc_scratch/data/protect/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.fam
+awk -F'|' 'NR==FNR{c[$2]++;next};c[$2] > 0' $output_root/UK_Protect.fam $output_root/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.fam
 
 #merge two datasets - merge odinn and uk protect
-plink --bfile UK_Protect --bmerge ~/brc_scratch/data/protect/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect --make-bed --out merged_uk_protect
+plink --bfile UK_Protect --bmerge $output_root/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect --make-bed --out merged_uk_protect
 
 #merge third dataset with TEC ids - dcgn
-plink --bfile ~/brc_scratch/output/protect_qc/merged_uk_protect --bmerge UK_ByronCreese_PN_alias.dcgn --make-bed --out merged_uk_protect_dcgn
+plink --bfile $output_root/merged_uk_protect --bmerge UK_ByronCreese_PN_alias.dcgn --make-bed --out merged_uk_protect_dcgn
 
 #check merge - expecting 4228 + 1768 = 5996 individuals
 wc -l merged_uk_protect.bim
@@ -95,16 +130,17 @@ wc -l merged_uk_protect_dcgn.fam
 #extract IDs to compare with phenotype file IDs and remove non-PROTECT IDs
 awk '{print $2}' merged_uk_protect.fam > merged_IDS.txt
 
-awk -F',' '{print $1}' MDDDx.csv > pheno_IDS.txt
+awk -F',' '{print $1}' $data_root/MDDDx.csv > pheno_IDS.txt
 
-#drop header
+#drop header from pheno (B20_TEC_ID)
 sed '1d' pheno_IDS.txt > tmpfile; mv tmpfile pheno_IDS_cleaned.txt
 wc -l pheno_IDS_cleaned.txt
 #15519 pheno IDs
 
 awk '{print "FAM001" ,$1 }' pheno_IDS_cleaned.txt > pheno_IDS_cleaned_plink.txt
+rm pheno_IDS.txt
 
-#keep only IDs in pheno file
+#keep only IDs in pheno file - i.e. only TEC IDs
 plink --bfile merged_uk_protect --keep pheno_IDS_cleaned_plink.txt --make-bed --out subset_merged_uk_protect
 
 wc -l subset_merged_uk_protect.fam
@@ -113,10 +149,13 @@ wc -l subset_merged_uk_protect.bim
 #693143 variants 
 
 #create a batch variable based on what IDs come from which of the two filesets
-awk '{print $2, "batch001" }' ~/brc_scratch/data/protect/UK_Protect.fam > merged_IDS_batched.txt
-awk '{print $2, "batch002" }' ~/brc_scratch/data/protect/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.fam > merged_IDS_batched2.txt
+awk '{print $2, "batch001" }' $output_root/UK_Protect.fam > merged_IDS_batched.txt
+awk '{print $2, "batch002" }' $output_root/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect.fam > merged_IDS_batched2.txt
 cat merged_IDS_batched.txt merged_IDS_batched2.txt > batch_variable_merged_uk_protect.txt
 wc -l batch_variable_merged_uk_protect.txt
+#5996 IDs
+rm merged_IDS_batched.txt
+rm merged_IDS_batched2.txt
 
 #match to IDs that remain in subset bed files
 awk 'NR==FNR{vals[$2];next} ($1) in vals' subset_merged_uk_protect.fam batch_variable_merged_uk_protect.txt > batch_variable_merged_uk_protect_final.txt
@@ -124,8 +163,9 @@ wc -l batch_variable_merged_uk_protect_final.txt
 #5328 individual IDs with batch info
 
 #update to MDD phenotype in .fam file - reformat pheno first
-sed '1d' MDDDx.csv > tmpfile; mv tmpfile reformated_mdd_pheno2.txt
+sed '1d' $data_root/MDDDx.csv > tmpfile; mv tmpfile reformated_mdd_pheno2.txt
 awk -F"," '{print "FAM001", $1,$2}' reformated_mdd_pheno2.txt > reformated_mdd_pheno.txt
+rm reformated_mdd_pheno2.txt
 
 plink \
 --bfile subset_merged_uk_protect \
@@ -133,7 +173,7 @@ plink \
 --out subset_merged_uk_protect_pheno \
 --missing-phenotype -9 \
 --1 \
---pheno reformated_mdd_pheno.txt \
+--pheno reformated_mdd_pheno.txt 
 
 #tabulate case-controls in .fam
 awk '{print $6}' subset_merged_uk_protect_pheno.fam  | sort | uniq -c
@@ -147,8 +187,8 @@ mv subset_merged_uk_protect_pheno.bed FILE.bed
 mv subset_merged_uk_protect_pheno.bim FILE.bim
 
 #check
-wc -l FILE.fam
-wc -l FILE.bim
+wc -l FILE.fam #5328
+wc -l FILE.bim #693143
 
 
 #################################################
@@ -159,9 +199,43 @@ wc -l FILE.bim
 plink --bfile UK_ByronCreese_PN_alias.dcgn --keep pheno_IDS_cleaned_plink.txt --make-bed --out subset_dcgn_uk_protect
 
 wc -l subset_dcgn_uk_protect.fam
-#5328 individuals remain
+#3245 individuals remain
 wc -l subset_dcgn_uk_protect.bim
 #693143 variants 
 
+#update to MDD phenotype in .fam file
+plink \
+--bfile subset_dcgn_uk_protect \
+--make-bed \
+--out subset_dcgn_uk_protect_pheno \
+--missing-phenotype -9 \
+--1 \
+--pheno reformated_mdd_pheno.txt 
 
+#tabulate case-controls in .fam
+awk '{print $6}' subset_dcgn_uk_protect_pheno.fam  | sort | uniq -c
+#2434 '1' and 811 '2'
+wc -l subset_dcgn_uk_protect_pheno.fam
+#check sex - some might be zero (missing)
+awk '{print $5}' subset_dcgn_uk_protect_pheno.fam  | sort | uniq -c
+#15 with missing sex (0)
+
+#create LISA files
+mv subset_dcgn_uk_protect_pheno.fam FILE_dcgn.fam
+mv subset_dcgn_uk_protect_pheno.bed FILE_dcgn.bed
+mv subset_dcgn_uk_protect_pheno.bim FILE_dcgn.bim
+
+#check
+wc -l FILE_dcgn.fam
+#3245 IDs
+wc -l FILE_dcgn.bim
+#693143 variants
+
+head FILE_dcgn.fam
+head FILE_dcgn.bim
+awk '{print $1}' FILE_dcgn.bim  | sort | uniq -c
+
+#
+#
+#
 #end

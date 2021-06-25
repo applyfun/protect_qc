@@ -1,0 +1,227 @@
+---  
+title: 'QC of PROTECT genotype data v1.0' 
+subtitle: 'TEC IDs subsample report'
+author: 'For questions, contact ryan.arathimos@kcl.ac.uk'
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+    number_sections: true 
+---
+
+------------------------------------------------------------
+# Main QC process
+
+## Merge datasets - keep only individuals with 'TEC' in ID 
+
+-The number of TEC individuals after merging was:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.split.fam | cut -d' ' -f1 
+```
+-The number of variants after merging was:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.split.bim | cut -d' ' -f1 
+```
+-The number of samples from studies other than PROTECT (non 'TEC' IDs) was:
+```{bash echo=F}
+printf "811" 
+```
+
+## Exclude ultra-rare variants
+-Remove variants with MAF<0.0001
+
+-The number of variants remaining after ultra-rare exclusions was:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.common.bim | cut -d' ' -f1 
+```
+
+## Filter for call rate iteratively at 98%
+
+-The number of TEC individuals before iterative filtering was:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.common.fam | cut -d' ' -f1 
+```
+  
+-The number of TEC individuals after iterative filtering was:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.filtered.fam | cut -d' ' -f1 
+```
+  
+-The number of variants before iterative filtering was:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.common.bim | cut -d' ' -f1 
+```
+  
+-The number of variants after iterative filtering was:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.filtered.bim | cut -d' ' -f1 
+```
+  
+
+## Estimate relatedness 
+
+Relatedness estimated using KING-robust, part of the KING 2.2.3 package.
+For more information see http://people.virginia.edu/~wc9c/KING/manual.html
+
+-Keep only unrelated individuals (up to 3rd degree relatives)
+
+![KING-robust kinship on IBS0 stat](/scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/king_ibs0_kinship_TEC_3rd_degree_plot.png)
+
+KING also extracts a list of individuals that contains no pairs of individuals with a 1st-, 2nd- or 3rd-degree relationships, maximising the number of individual retained using the algorithm by Manichaikul et al. 2012.#
+
+-The number of related individuals to exclude according to KING is:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/TEC.king.kinshipunrelated_toberemoved.txt | cut -d' ' -f1 
+```
+
+The exclusion list is called 'TEC.king.kinshipunrelated_toberemoved.txt'
+
+
+### Filter to unrelated individuals
+
+## Examine Hardy-Weinberg disequilibrium 
+
+Use option --hardy in plink.
+
+-Exclude variants with hwe p-value < 0.00001
+
+-The number of variants before HWE exclusions was:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.filtered.unrelated.bim | cut -d' ' -f1 
+```
+
+-The number of variants after HWE exclusions is:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.filtered.hw_dropped.bim | cut -d' ' -f1 
+```
+### Create pruned dataset
+Set window size to 1500 per 150 kb and an r-squared of 0.2 (--indep-pairwise 1500 150 0.2)
+
+## Gender checks
+
+Use plink and set ycount to 0.3 0.7 0 3  
+Create additional exclusions list from this sex check file  
+Ensure that pseudoautosomal region on X is split  
+
+-The number of individuals to exclude due to sex mismatch is:
+
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/TEC.gender_exclusions | cut -d' ' -f1 
+```
+
+The exclusion list is called 'TEC.gender_exclusions'
+
+
+
+## Estimate PCs in EIGENSOFT 
+
+Use EIGENSOFT 6.1.4
+
+### Create further pruned dataset subset (only relateds excluded)
+
+Exclude variants in high LD regions and exclude non-autosomal regions  
+
+### Initial calculation of PCs 
+
+![PCs from initial calculation with projected self-reported ethnicities.](/scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/pc1_vs_pc2_TEC_n0_ethnicities.png)
+ 
+  
+
+## Project 1000G populations on to whole sample
+
+A guide to the abbreviations used for the 1000G populations can be found here:
+https://www.internationalgenome.org/faq/which-populations-are-part-your-study/
+
+
+![1000 genomes PCs projected on to PROTECT samples.](/scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/pc1_vs_pc2_PROTECT_TEST_MINPOPS_.png)
+____________________________________________________________________________________
+
+
+![1000 genomes PCs projected on to PROTECT samples with PROTECT self-reported ethnicities.](/scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/pc1_vs_pc2_PROTECT_TEST_MINPOPS_ETHNICITIES_.png)
+
+
+## Perform k-means clustering to derive European subset
+
+Perform 4-means clustering in R using the base R k-means clustering function.
+
+-The number of individuals in the 4-means cluster of Europeans is:
+
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/4means_europeans_id_list.txt | cut -d' ' -f1 
+```
+
+### Project European cluster on to PCs
+
+K-means clustering using PCs 1 and 2 from whole-sample PC calculation  
+
+![PCs 1-2 from 4-means Europeans clustering with highlighted European cluster.](/scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/pc1_vs_pc2_kmeans_clustering.png)
+
+## Recalculate PCs for Europeans
+
+PCs were recalculated for the European cluster of individuals
+
+
+### Comparison of top 20 PCs with/without outlier exclusions by EIGENSOFT
+
+![PCs 1-20 from 4-means Europeans cluster without outliers removed by EIGENSOFT.](/scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/pcs_1-20_nooutliersremoved_comparisons_protect.png)  
+
+____________________________________________________________________________________
+
+ 
+  ![PCs 1-20 from 4-means Europeans cluster with outliers removed by EIGENSOFT with sigma threshold set to 30.](/scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/pcs_1-20_comparisons_protect.png) 
+  
+  
+    
+  
+-The number of individuals excluded by EIGENSOFT as outliers is:  
+```{bash echo=F}
+awk '{print $2}' /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/4means_europeans_pc_outliers_IDs_TEC.txt | sort | uniq | wc -l
+```
+The exclusion list is called '4means_europeans_pc_outliers_IDs_TEC.txt'
+
+## Excess heterozygosity check
+
+Check for individuals with excess heterozygosity (unusual patterns of genome-wide heterogeneity)
+
+-Using plink ibc calculation the number of individuals to exclude is: 
+
+```{bash echo=F}
+awk '{print $2}' /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_TEC.filtered.unrelated.LD_two.het.LD_het_outliers_sample_exclude | sort | uniq | wc -l
+```
+
+
+
+# Summary
+
+## Sample size
+
+-The total number of individuals to exclude is:
+```{bash echo=F}
+awk '{print $2}' /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/TEC_all_exclusion_ids.txt | sort | uniq | wc -l
+
+```
+This includes individuals excluded due to relatedness estimation, non-european ancestry, gender mismatch, PC outliers and excess heterozygosity (it does not include individuals filtered due to missignness at 98% which were removed already in step 1)
+
+-The total number of variants used in the downstream PRS generation is:
+```{bash echo=F}
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/snps_after_hw_and_filtering.list | cut -d' ' -f1
+```
+
+## Recommended Methods wording 
+
+The recommended wording to describe the genotype QC process in Methods sections of publications or write-ups
+
+Note that a description of the genotyping process (such as the genotyping array name), along with the different genotype batches in PROTECT is assumed to precede this description of QC.  
+  
+
+_______________________________________________________________
+*The total numbers of participants in the combined genotyped data was 9146. Iterative filtering for call rate at 98% completeness (for individuals and SNPs) resulted in the exclusion of 84 samples, after which 9062 remained. In the filtered data relatedness was estimated using KING 2.2.3, followed by extraction of a list of individuals that contained no pairs of individuals with a 1st-, 2nd- or 3rd-degree relationships. Variants with Hardy-Weinberg Equilibrium p-value < 0.00001 were excluded. Individuals whose gender estimated in plink did not match that reported by the study participants were excluded. Principal components (PCs) were calculated for the unrelated subset of the data using EIGENSOFT 6.1.4 after pruning using a window size of 1500 bases per 150 kb and an r-squared of 0.2. Variants in high LD regions and non-autosomal regions were also excluded. K-means clustering (assuming 4 distinct clusters) was used on the first two derived principal components to define a cluster of European ancestry individuals. Principal components were then recalculated for the cluster of individuals of European ancestry, with outlier individuals removed by EIGENSOFT if exceeding a sigma threshold of 30. Finally, individuals with excess heterozygosity (unusual patterns of genome-wide heterogeneity) calculated using the ibc function in plink v1.90 were excluded. The total number of individuals excluded when removing those that were either related, of non-European ancestry, of mismatched sex, outliers in the PC calculation or detected to have excess heterozygosity was 790 given an original sample size of 9062 participants.*
+
+_______________________________________________________________
+
+
+    
+      
+      
+__________________________________________________________________________________

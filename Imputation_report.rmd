@@ -1,0 +1,117 @@
+---  
+title: 'Imputation of PROTECT genotype data v1.0' 
+subtitle: 'TEC IDs subsample report'
+author: 'For questions, contact ryan.arathimos@kcl.ac.uk'
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  pdf_document:
+    toc: yes
+    number_sections: true 
+---
+
+------------------------------------------------------------
+
+# Imputation
+
+## Imputation process information and statistics
+
+Imputation was carried out using the Michigan imputation server on 20/04/2020
+Genotypes were imputed to 1000 genomes phase 3.
+Sex chromosomes X/Y were not imputed.
+
+Michigan server report for the imputation options used:
+
+```{}
+22 valid VCF file(s) found.
+
+Samples: 9062
+Chromosomes: 1 10 11 12 13 14 15 16 17 18 19 2 20 21 22 3 4 5 6 7 8 9
+SNPs: 578427
+Chunks: 154
+Datatype: unphased
+Build: hg19
+Reference Panel: apps@1000g-phase-3-v5 (hg19)
+Population: eur
+Phasing: eagle
+Mode: imputation
+
+```
+_____________________________________
+
+Michigan server QC statistics:
+
+```{}
+
+Statistics:
+Alternative allele frequency > 0.5 sites: 0
+Reference Overlap: 99.09 %
+Match: 485,019
+Allele switch: 87,792
+Strand flip: 1
+Strand flip and allele switch: 0
+A/T, C/G genotypes: 380
+Filtered sites:
+Filter flag set: 0
+Invalid alleles: 0
+Multiallelic sites: 0
+Duplicated sites: 0
+NonSNP sites: 0
+Monomorphic sites: 0
+Allele mismatch: 0
+SNPs call rate < 90%: 0
+
+Excluded sites in total: 1
+Remaining sites in total: 573,191
+Typed only sites: 5,235
+
+```
+
+Output imputed genotypes are in hg19
+
+# Imputation QC
+
+## Plots of variant imputation quality
+
+Exclude all variants with MAF<0.00001
+
+![Imputation quality by chromosome](/users/k1815780/brc_scratch/output/protect_qc/imputation/downloaded/Rsquared_22chromosomes_protect.png)
+
+![Imputation quality by chromosome for variants with MAF>0.01](/users/k1815780/brc_scratch/output/protect_qc/imputation/downloaded/Rsquared_highmaf_22chromosomes_protect.png)
+_________________________________________________________ 
+   
+## Exclusions applied
+
+Restrict to SNPs only.
+
+Merge in genotypes from X/Y chromosomes that were not imputed.
+
+Use an imputation quality threshold ('Rsq' as reported by the Michigan imputation server) of 0.7
+
+Variants were further restricted to SNPs with a MAF > 0.001  
+
+
+-The number of individuals after quality control was:
+```{bash echo=F}
+wc -l /users/k1815780/brc_scratch/output/protect_qc/imputation/downloaded/postimputation_merged_rsids_maf.fam | cut -d' ' -f1 
+```
+
+-The number of variants after quality control was:
+```{bash echo=F}
+wc -l /users/k1815780/brc_scratch/output/protect_qc/imputation/downloaded/postimputation_merged_rsids_maf.bim | cut -d' ' -f1 
+```
+
+Imputation quality scores are provided in the .info files.
+
+## Recommended wording for Methods 
+
+The recommended wording to describe the genotype imputation in Methods sections of publications or write-ups.
+
+Note that a description of the genotyping process and genotype QC is assumed to precede the genotype imputation description.
+
+-------------------------------------
+
+*Genotypes were imputed to 1000 Genomes European reference panel using the Michigan imputation server and genotype phasing using Eagle. Variants were restricted to SNPs only, with a MAF > 0.001. An absolute cutoff of 0.7 was applied to the imputation quality of variants (Rsq as reported by the Michigan imputation server). The number of variants remaining after quality control was 9415055.*
+  
+------------------------------------
+    
+

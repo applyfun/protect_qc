@@ -1,0 +1,178 @@
+---  
+title: 'QC of substudies in PROTECT genotype data v1.0' 
+subtitle: 'IDs of BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN '
+author: 'For questions, contact ryan.arathimos@kcl.ac.uk'
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+    number_sections: true 
+---
+
+------------------------------------------------------------
+# Main QC process
+
+## Split datasets by study ID
+
+BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN
+
+11 separate studies
+
+## Exclude ultra-rare variants
+-Remove variants with MAF<0.0001
+
+-The number of variants remaining after ultra-rare exclusions was:
+```{bash echo=F}
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN)
+
+for studyname in "${listnames[@]}" ; do
+	echo "$studyname"
+
+	wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_$studyname.common.bim | cut -d' ' -f1 
+
+done
+```
+
+## Filter for call rate iteratively at 98%
+
+-The number of individuals before iterative filtering was:
+```{bash echo=F}
+
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN)
+
+for studyname in "${listnames[@]}" ; do
+	echo "$studyname"
+
+	wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_$studyname.common.fam | cut -d' ' -f1 
+ 
+
+done
+
+```
+  
+-The number of individuals after iterative filtering was:
+```{bash echo=F}
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN)
+
+for studyname in "${listnames[@]}" ; do
+	echo "$studyname"
+
+	wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_$studyname.filtered.fam | cut -d' ' -f1 
+
+done
+```
+  
+-The number of variants before iterative filtering was:
+```{bash echo=F}
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN)
+
+for studyname in "${listnames[@]}" ; do
+	echo "$studyname"
+
+	wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_$studyname.common.bim | cut -d' ' -f1 
+
+done
+```
+  
+-The number of variants after iterative filtering was:
+```{bash echo=F}
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN)
+
+for studyname in "${listnames[@]}" ; do
+	echo "$studyname"
+	wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_$studyname.filtered.bim | cut -d' ' -f1 
+done
+```
+  
+
+## Estimate relatedness 
+
+Relatedness estimated using KING-robust, part of the KING 2.2.3 package.
+For more information see http://people.virginia.edu/~wc9c/KING/manual.html
+
+-Keep only unrelated individuals (up to 3rd degree relatives)
+
+Example output  
+  
+  
+![KING-robust kinship on IBS0 stat for CHN substudy](/scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/king_ibs0_kinship_CHN_3rd_degree_plot.png)
+
+KING also extracts a list of individuals that contains no pairs of individuals with a 1st-, 2nd- or 3rd-degree relationships, maximising the number of individual retained using the algorithm by Manichaikul et al. 2012.#
+
+-The number of related individuals to exclude according to KING is:
+```{bash echo=F}
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN)
+
+for studyname in "${listnames[@]}" ; do
+	echo "$studyname"
+	wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/$studyname.king.kinshipunrelated_toberemoved.txt | cut -d' ' -f1 
+done
+```
+
+The exclusion lists are called 'studyID.king.kinshipunrelated_toberemoved.txt'
+
+
+### Filter to unrelated individuals
+
+## Examine Hardy-Weinberg disequilibrium 
+
+Use option --hardy in plink.
+
+-Exclude variants with hwe p-value < 0.00001
+
+-The number of variants before HWE exclusions was:
+```{bash echo=F}
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN)
+
+for studyname in "${listnames[@]}" ; do
+	echo "$studyname"
+wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_$studyname.filtered.unrelated.bim | cut -d' ' -f1 
+
+done
+```
+
+-The number of variants after HWE exclusions is:
+```{bash echo=F}
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN)
+
+for studyname in "${listnames[@]}" ; do
+	echo "$studyname"
+	wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/merged_uk_protect_$studyname.filtered.hw_dropped.bim | cut -d' ' -f1 
+done
+```
+### Create pruned dataset
+Set window size to 1500 per 150 kb and an r-squared of 0.2 (--indep-pairwise 1500 150 0.2)
+
+## Gender checks
+
+Use plink and set ycount to 0.3 0.7 0 3  
+Create additional exclusions list from this sex check file  
+Ensure that pseudoautosomal region on X is split  
+
+-The number of individuals to exclude due to sex mismatch is:
+
+```{bash echo=F}
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN)
+
+for studyname in "${listnames[@]}" ; do
+	echo "$studyname"
+	wc -l /scratch/users/k1815780/old-scratch_rosalind-legacy-import_2020-01-27/output/protect_qc/$studyname.gender_exclusions | cut -d' ' -f1 
+done
+```
+
+
+## Estimate PCs in EIGENSOFT 
+
+Use EIGENSOFT 6.1.4
+
+### Create further pruned dataset subset (only relateds excluded)
+
+Exclude variants in high LD regions and exclude non-autosomal regions  
+
+### Calculate PCs 
+
+Successful for all substudies
+
+
+

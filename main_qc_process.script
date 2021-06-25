@@ -1,0 +1,508 @@
+### Main QC Process for PROTECT genotype files
+### 26/11/20199
+### R Arathimos
+### based on https://github.com/JoniColeman/gwas_scripts
+
+#set directories and config
+cd ~/brc_scratch/data/protect_qc/
+
+printf "root=~/brc_scratch/data/protect_qc
+file_ioe24=UK_ByronCreese_PN_alias.ioe24
+pheno=~/brc_scratch/data/protect/reformated_mdd_pheno_final.raw
+outputdir=~/brc_scratch/output/protect_qc
+scriptsdir=~/brc_scratch/scripts/protect_qc
+covar=/path/to/covariates.cov
+gwas_scriptsdir=~/brc_scratch/scripts/protect_qc/gwas_scripts-master
+plink=plink
+R=/path/to/R" > Config.conf 
+
+source Config.conf
+
+#get scripts from Joni Colemans github
+cd ~/brc_scratch/scripts/protect_qc
+
+#wget https://github.com/JoniColeman/gwas_scripts/archive/master.zip
+#unzip master.zip
+#rm master.zip
+
+####
+
+cd $outputdir
+
+#merge two datasets - merge odinn and uk protect
+plink --bfile UK_Protect --bmerge $outputdir/odinn/groups/bioinfo/requests/BID-312/output/UK_Protect.plink.dir/UK_Protect --make-bed --out $outputdir/merged_uk_protect
+
+#merge third dataset with TEC ids - dcgn
+plink --bfile $outputdir/merged_uk_protect --bmerge UK_ByronCreese_PN_alias.dcgn --make-bed --out $outputdir/merged_uk_protect_dcgn
+
+#merge fourth dataset of non-PROTECT individuals - ioe24
+plink --bfile $outputdir/merged_uk_protect_dcgn --bmerge UK_ByronCreese_PN_alias.ioe24 --make-bed --out $outputdir/merged_uk_protect_dcgn_ioe24
+
+#check merge - expecting 4228 + 1768 = 5996 individuals
+wc -l merged_uk_protect.bim
+wc -l merged_uk_protect.fam
+#confirmed 5996 individuals and 693143 variants
+
+#check second merge - expecting 9952
+wc -l merged_uk_protect_dcgn.bim
+wc -l merged_uk_protect_dcgn.fam
+#confirmed 9952 individuals and 693143 variants
+
+#check full merge - expecting 9952 + 5 = 9957
+wc -l merged_uk_protect_dcgn_ioe24.bim
+wc -l merged_uk_protect_dcgn_ioe24.fam
+#confirmed 9957 individuals and 1228946 variants
+
+#loop over studies
+listnames=(BPD BBP MAGD WLD DPM LCR UNK DCR BK BR CHN TEC)
+
+for studyname in "${listnames[@]}" ; do
+    echo "$studyname"
+
+    #create FID-IID list that plink with recognise from study ID lists
+    awk '{print "FAM001", $1}' $studyname.ids.list.txt OFS="\t" > $studyname.ids.plink.list.txt
+
+    #split by study name
+    $plink \
+    --bfile $outputdir/merged_uk_protect_dcgn \
+    --keep $outputdir/$studyname.ids.plink.list.txt \
+    --make-bed \
+    --out $outputdir/merged_uk_protect_$studyname.split
+
+done
+
+for studyname in "${listnames[@]}" ; do
+    echo "$studyname"
+
+	#keep only common 
+	$plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.split \
+	--maf 0.0001 \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.common
+
+done
+
+
+#############################################################
+
+#filter for call rate iteratively at 98%
+#from the file run using sh ~/brc_scratch/scripts/pelotas_adhd/gwas_scripts-master/Iterative_Missingness.sh 90 98 1 
+
+for studyname in "${listnames[@]}" ; do
+    echo "$studyname"
+
+	aspercent=$(echo 90 " / 100" | bc -l)
+	genomind_1=$(echo "1-"$aspercent | bc -l)
+
+	$plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.common \
+	--geno $genomind_1 \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.common_SNP90
+
+	#Remove samples with completeness < 90%
+
+	$plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.common_SNP90 \
+	--mind $genomind_1 \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.common_sample90.SNP90
+
+	newstep=$((90+1))
+
+	for i in $(seq $newstep 1 98)
+
+	do
+
+	aspercent=$(echo $i " / 100" | bc -l)
+	genomind=$(echo "1-"$aspercent | bc -l)
+	prefix=$(($i-1))
+
+	$plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.common_sample$prefix.SNP$prefix \
+	--geno $genomind \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.common_sample$prefix.SNP$i
+
+	$plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.common_sample$prefix.SNP$i \
+	--mind $genomind \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.common_sample$i.SNP$i
+
+	done
+
+	$plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.common_sample98.SNP98 \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.filtered 
+
+done
+
+#tidy up
+rm merged_uk_protect_*.common_sample9*.SNP9*.*
+
+#check what exclusions were made:
+
+for studyname in "${listnames[@]}" ; do
+    
+    echo "$studyname"
+
+	wc -l $outputdir/merged_uk_protect_$studyname.common.bim
+	wc -l $outputdir/merged_uk_protect_$studyname.common.fam
+
+    wc -l $outputdir/merged_uk_protect_$studyname.filtered.bim 
+    wc -l $outputdir/merged_uk_protect_$studyname.filtered.fam 
+
+done
+
+
+
+###################### Run KING-robust to estimate relatedness - keep only unrelateds (3rd degree)
+
+cd ~/brc_scratch/software
+
+#wget http://people.virginia.edu/~wc9c/KING/Linux-king.tar.gz
+#tar -zxvf Linux-king.tar.gz
+
+#run KING
+cd ~/brc_scratch/script/protect_qc/
+
+qsub run_KING.sh
+
+#will also plot in job
+
+#filter unrelated
+for studyname in "${listnames[@]}" ; do
+    
+    echo "$studyname"
+
+	plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.filtered \
+	--remove $outputdir/$studyname.king.kinshipunrelated_toberemoved.txt \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.filtered.unrelated
+
+done
+
+#examine Hardy-Weinberg 
+for studyname in "${listnames[@]}" ; do
+    
+    echo "$studyname"
+
+	plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.filtered.unrelated \
+	--hardy \
+	--out $outputdir/merged_uk_protect_$studyname.filtered.hw_p_values
+
+	#
+	plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.filtered.unrelated \
+	--hwe 0.00001 \
+	--make-bed \
+	--out  $outputdir/merged_uk_protect_$studyname.filtered.hw_dropped
+
+done
+
+#create pruned dataset subset
+for studyname in "${listnames[@]}" ; do
+    
+    echo "$studyname"
+
+	plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.filtered.hw_dropped \
+	--indep-pairwise 1500 150 0.2 \
+	--out $outputdir/merged_uk_protect_$studyname.filtered.unrelated.LD_one
+
+	plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.filtered.hw_dropped \
+	--extract $outputdir/merged_uk_protect_$studyname.filtered.unrelated.LD_one.prune.in \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.filtered.unrelated.LD_two
+
+done
+
+
+#exclude high LD regions (file in scripts directory gwas_scripts-master now has a hg38 highLD coordinates file)
+
+############################################################################
+#download 1000G in VCF - reformat and use as reference
+#prefix="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/ALL.chr" ;
+
+#suffix=".phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf.gz" ;
+
+#for chr in {1..22} X; do
+#    wget $prefix$chr$suffix $prefix$chr$suffix.tbi ;
+#done
+############################################################################
+
+awk -f $gwas_scriptsdir/highLDregions4bim_b37.awk ~/brc_scratch/data/pelotas_adhd/1000g/1kg_phase1_all.bim > highLDexcludes
+
+#thirdly the non-autosomes
+awk '($1 < 1) || ($1 > 22) {print $2}' $outputdir/merged_uk_protect_TEC.filtered.unrelated.LD_two.bim > autosomeexcludes
+
+#concatenate in to one list
+cat highLDexcludes autosomeexcludes > $outputdir/highLD_and_autosomal_excludes  
+
+#exclude high LD SNPs in list 
+for studyname in "${listnames[@]}" ; do
+    
+    echo "$studyname"
+
+	plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.filtered.unrelated.LD_two \
+	--exclude $outputdir/highLD_and_autosomal_excludes \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.filtered.unrelated.LD_three
+
+done
+
+#ensure that pseudoautosomal region on X is split
+for studyname in "${listnames[@]}" ; do
+    
+    echo "$studyname"
+
+	plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.filtered.unrelated.LD_two \
+	--split-x b38 \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.filtered.unrelated.LD_split
+
+done
+
+#check gender
+for studyname in "${listnames[@]}" ; do
+     
+    echo "$studyname "
+
+	plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.filtered.unrelated.LD_split \
+	--check-sex ycount 0.3 0.7 0 3 \
+	--out $outputdir/merged_uk_protect_$studyname.filtered.unrelated.sex_check
+
+	#create additional exclusions list from sex check file
+	awk -F " " '$5 == "PROBLEM"' $outputdir/merged_uk_protect_$studyname.filtered.unrelated.sex_check.sexcheck > $outputdir/list.$studyname.sex_check_problems
+	awk -F " " '{ if(($6 <= 0.7) && ($6 >= 0.3)) { print } }' $outputdir/list.$studyname.sex_check_problems > $outputdir/list.$studyname.sexcheck1.txt
+	awk '{print $1,$2}' $outputdir/list.$studyname.sexcheck1.txt > $outputdir/gender_exclusions.$studyname.txt
+	rm $outputdir/list.$studyname.sexcheck1.txt
+	#rm $outputdir/list.$studyname.sex_check_problems
+	printf "Done with sexcheck file sorting for $studyname "
+
+
+done
+
+#examine gender mismatches detected 
+for studyname in "${listnames[@]}" ; do
+     
+    echo "$studyname has this many gender mismatches: "
+    wc -l $outputdir/gender_exclusions.$studyname.txt
+    head $outputdir/gender_exclusions.$studyname.txt
+
+done
+
+#also check gender mismatch intermediate file
+head $outputdir/list.TEC.sex_check_problems
+
+
+#################################################################
+######################### PCs ###################################
+#################################################################
+
+#drop gender mismatches for PCs
+for studyname in "${listnames[@]}" ; do
+     
+    echo "$studyname "
+
+	plink \
+	--bfile $outputdir/merged_uk_protect_$studyname.filtered.unrelated.LD_three \
+	--remove $outputdir/gender_exclusions.$studyname.txt \
+	--make-bed \
+	--out $outputdir/merged_uk_protect_$studyname.sexcheck1.cleaned
+
+done
+
+#PCs by EIGENSOFT
+module load bioinformatics/EIGENSOFT/6.1.4
+
+#run generate PCs as a job since compute time > 1hr
+cd $scriptsdir
+
+qsub generate_pcs.sh
+
+#plot PCs in R
+for studyname in "${listnames[@]}" ; do
+     
+    echo "$studyname "
+
+	Rscript --vanilla ~/brc_scratch/scripts/protect_qc/plot_pcs.r merged_uk_protect_$studyname.pop_strat.pca.evec ~/brc_scratch/output/protect_qc/ n0 $studyname
+
+done
+
+#define a broadly European subset of individuals in R based on PCs - just for TEC 
+Rscript --vanilla ~/brc_scratch/scripts/protect_qc/define_broad_europeans.r merged_uk_protect_TEC.pop_strat.pca.evec ~/brc_scratch/output/protect_qc/ broad_europeans TEC
+
+#run generate PCs again, this time for just broad European subset - first subset dataset
+plink \
+--bfile $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned \
+--keep $outputdir/broad_europeans_id_list.txt \
+--make-bed \
+--out $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.broad.europeans
+
+#check
+wc -l $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.broad.europeans.fam
+wc -l $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.broad.europeans.bim
+
+cd $scriptsdir
+
+#rerun pca
+qsub generate_broad_european_pcs.sh
+
+#plot PCs in R
+Rscript --vanilla ~/brc_scratch/scripts/protect_qc/plot_pcs.r merged_uk_protect_TEC_broad_europeans.pop_strat.pca.evec ~/brc_scratch/output/protect_qc/ broad_europeans TEC
+
+#generate a list of europeans using 4-means clustering
+Rscript kmean_clustering_europeans_pcs.r
+
+#run generate PCs again, this time for 4 means clustered European subset - second subset of dataset
+plink \
+--bfile $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned \
+--keep $outputdir/4means_europeans_id_list.txt \
+--make-bed \
+--out $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans
+
+#check
+wc -l $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans.fam
+wc -l $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans.bim
+
+cd $scriptsdir
+
+#rerun pca
+qsub generate_4means_european_pcs.sh
+
+#plot PCs in R
+Rscript --vanilla ~/brc_scratch/scripts/protect_qc/plot_pcs.r merged_uk_protect_TEC_4means_europeans.pop_strat.pca.evec ~/brc_scratch/output/protect_qc/ 4means_europeans TEC
+
+
+
+########################################### 1
+
+#find IDs of outliers in PCA - need to specify which PC and what name to give files/where files are
+Rscript --vanilla ~/brc_scratch/scripts/protect_qc/find_8SD_outliers_pcs.r merged_uk_protect_TEC_4means_europeans.pop_strat.pca.evec ~/brc_scratch/output/protect_qc/ 4means_europeans TEC 2
+
+#exclude outliers and rerun pca
+plink \
+--bfile $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans \
+--exclude $outputdir/4means_europeans_8sd_outliers_IDs_TEC.txt \
+--make-bed \
+--out $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans.8sd.outliers1
+
+#check
+wc -l $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans.8sd.outliers1.fam
+wc -l $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans.8sd.outliers1.bim
+
+cd $scriptsdir
+
+#rerun pca
+qsub generate_4means_european_8sd_outliers_pcs.sh
+
+#edit to allow R import
+sed -i -e 's/^[ \t]*//' -e 's/:/ /g' $outputdir/merged_uk_protect_TEC_4means_europeans.8sd.outliers1.pop_strat.pca.evec
+
+#plot PCs in R again
+Rscript --vanilla ~/brc_scratch/scripts/protect_qc/plot_pcs.r merged_uk_protect_TEC_4means_europeans.8sd.outliers1.pop_strat.pca.evec ~/brc_scratch/output/protect_qc/ 4means_europeans.8sd.outliers1 TEC
+
+############################################## 2
+
+#find IDs of outliers in PCA - need to specify which PC and what name to give files/where files are
+Rscript --vanilla ~/brc_scratch/scripts/protect_qc/find_8SD_outliers_pcs.r merged_uk_protect_TEC_4means_europeans.pop_strat.pca.evec ~/brc_scratch/output/protect_qc/ 4means_europeans TEC 3
+
+#exclude outliers and rerun pca
+plink \
+--bfile $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans \
+--exclude $outputdir/4means_europeans_8sd_outliers_IDs_TEC.txt \
+--make-bed \
+--out $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans.8sd.outliers1
+
+#check
+wc -l $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans.8sd.outliers1.fam
+wc -l $outputdir/merged_uk_protect_TEC.sexcheck1.cleaned.4means.europeans.8sd.outliers1.bim
+
+cd $scriptsdir
+
+#rerun pca
+qsub generate_4means_european_8sd_outliers_pcs.sh
+
+#edit to allow R import
+sed -i -e 's/^[ \t]*//' -e 's/:/ /g' $outputdir/merged_uk_protect_TEC_4means_europeans.8sd.outliers1.pop_strat.pca.evec
+
+#plot PCs in R again
+Rscript --vanilla ~/brc_scratch/scripts/protect_qc/plot_pcs.r merged_uk_protect_TEC_4means_europeans.8sd.outliers1.pop_strat.pca.evec ~/brc_scratch/output/protect_qc/ 4means_europeans.8sd.outliers1 TEC
+
+
+
+#Test for unusual patterns of genome-wide heterogeneity in LD-pruned data
+
+$plink \
+--bfile $root.LD_pop_strat \
+--ibc \
+--out $root.het
+
+#Exclude samples identified as outliers
+
+R --file=IdHets.R --args $root.het
+
+$plink \
+--bfile $root.LD_pop_strat \
+--remove $root.het.LD_het_outliers_sample_exclude \
+--make-bed \
+--out $root.LD_het_cleaned
+
+$plink \
+--bfile $root.pop_strat \
+--remove $root.het.LD_het_outliers_sample_exclude \
+--make-bed \
+--out $root.het_cleaned
+
+
+
+
+
+
+
+
+#bind all outlier IDs in to one list
+$outputdir/4means_europeans_8sd_outliers_IDs_TEC.txt
+
+
+
+
+
+
+
+
+###################################
+
+#create list of IDs to exclude - related individuals - gender mismatches - non-europeans and PC outliers
+cat $outputdir/TEC.king.kinshipunrelated_toberemoved.txt $outputdir/gender_exclusions.TEC.txt > $outputdir/TEC_relateds_gender_mismatches_ids.txt
+
+#convert european ID list to non-europeans (for exclusion list) $outputdir/4means_europeans_id_list.txt
+awk '{print $1, $2}' $outputdir/merged_uk_protect_TEC.common.fam > all_TEC_ids.tmp
+awk 'NR==FNR {exclude[$2];next} !($2 in exclude)' 4means_europeans_id_list.txt all_TEC_ids.tmp  > 4means_non_europeans_TEC_ids.txt
+
+wc -l 4means_non_europeans_TEC_ids.txt
+head 4means_non_europeans_TEC_ids.txt
+rm all_TEC_ids.tmp
+
+#concatanate with PC outlier IDs and non-european IDs
+cat $outputdir/TEC_relateds_gender_mismatches_ids.txt $outputdir/4means_europeans_8sd_outliers_IDs_TEC.txt $outputdir/4means_non_europeans_TEC_ids.txt > TEC_all_exclusion_ids.txt
+awk -v OFS="\t" '$1=$1' $outputdir/TEC_all_exclusion_ids.txt > $outputdir/TEC_all_exclusion_ids_final.txt
+
+head TEC_all_exclusion_ids.txt
+wc -l TEC_all_exclusion_ids.txt 
+
+#some exclusions IDs may not be unique - count
+awk '{print $2}' TEC_all_exclusion_ids.txt | sort | uniq | wc -l
+
+#also create list of SNPs to keep in PRS generation
+awk '{print $2}' ~/brc_scratch/output/protect_qc/merged_uk_protect_TEC.filtered.hw_dropped.bim > ~/brc_scratch/output/protect_qc/snps_after_hw_and_filtering.list
